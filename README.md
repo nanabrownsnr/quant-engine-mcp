@@ -4,11 +4,11 @@ Deterministic portfolio allocation and risk calculations exposed through Streama
 
 ## Tools
 
-- `calculate_portfolio_drift(current_holdings, target_allocation)` compares current and target asset-class weights.
-- `run_rebalance_plan(current_holdings, target_allocation, max_tax_impact=true)` returns buy/sell dollar amounts and tax-impact flags. It never places trades.
+- `calculate_portfolio_drift(request)` compares current and target asset-class weights. The request contains `current_holdings` and `target_allocation`.
+- `run_rebalance_plan(request, max_tax_impact=true)` returns buy/sell dollar amounts and tax-impact flags. The request contains `current_holdings` and `target_allocation`. It never places trades.
 - `compute_portfolio_metrics(current_holdings)` calculates volatility, Sharpe ratio, and correlation from supplied return series.
 
-Holdings use `market_value`, or `quantity` and `current_price`. Asset classes use values such as `Equity` and `Bond`. Target allocations are decimal weights summing to `1.0`.
+Holdings use `market_value`, or `quantity` and `current_price`. Each holding requires `ticker` and `asset_class`; optional fields include `cost_basis`, `account_type`, and `returns`. Asset classes use values such as `Equity` and `Bond`. Target allocations are decimal weights summing to `1.0`.
 
 ## Run
 
