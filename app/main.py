@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager, suppress
 from fastmcp import FastMCP
 from fastmcp.server.middleware import Middleware as MCPMiddleware
 from fastmcp.server.middleware import MiddlewareContext
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.license import license_watcher
 from app.quant import calculate_drift, metrics, rebalance
-from app.routes import register_routes
+from app.twynity import register_routes
 from app.usage import save_usage_report
 
 
@@ -54,7 +56,20 @@ class UsageTrackingMiddleware(MCPMiddleware):
 
 mcp.add_middleware(UsageTrackingMiddleware())
 register_routes(mcp)
-app = mcp.http_app()
+origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()] or ["*"]
+
+app = mcp.http_app(
+    middleware=[Middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["mcp-protocol-version", "mcp-session-id", "Authorization", "Content-Type"],
+        expose_headers=["mcp-session-id"],
+    )],
+    transport="streamable-http",
+    stateless_http=True,
+    json_response=True,
+)
 
 if __name__ == "__main__":
     import uvicorn
