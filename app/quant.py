@@ -123,3 +123,82 @@ def metrics(holdings: list[dict]) -> dict:
     )
     result["correlation_matrix"] = frame.corr().round(8).to_dict()
     return result
+
+
+def optimize_allocation(
+    historical_returns: dict[str, list[float]], objective: str, risk_free_rate: float
+) -> dict:
+    """Optimize weights using PyPortfolioOpt and Ledoit-Wolf covariance shrinkage."""
+    from pypfopt import EfficientFrontier
+    from sklearn.covariance import LedoitWolf
+
+    frame = pd.DataFrame(historical_returns, dtype=float).dropna()
+    if frame.shape[1] < 2 or frame.shape[0] < 2:
+        raise ValueError("At least two assets and two aligned observations are required")
+    expected_returns = frame.mean() * 252
+    covariance = pd.DataFrame(
+        LedoitWolf().fit(frame.to_numpy()).covariance_ * 252,
+        index=frame.columns,
+        columns=frame.columns,
+    )
+    frontier = EfficientFrontier(expected_returns, covariance)
+    if objective == "max_sharpe":
+        frontier.max_sharpe(risk_free_rate=risk_free_rate)
+    elif objective == "min_volatility":
+        frontier.min_volatility()
+    else:
+        raise ValueError("objective must be max_sharpe or min_volatility")
+    weights = frontier.clean_weights()
+    performance = frontier.portfolio_performance(risk_free_rate=risk_free_rate)
+    return {
+        "objective": objective,
+        "weights": weights,
+        "expected_return": round(float(performance[0]), 8),
+        "volatility": round(float(performance[1]), 8),
+        "sharpe_ratio": round(float(performance[2]), 8),
+        "covariance_estimator": "LedoitWolf",
+    }
+
+
+def risk_analysis(holdings: list[dict]) -> dict:
+    """Analyze concentration, correlations, and volatility contribution."""
+    values = {_asset_class(p): 0.0 for p in holdings}
+    for position in holdings:
+        values[_asset_class(position)] += _value(position)
+    total = sum(values.values())
+    if total <= 0:
+        raise ValueError("Current holdings must have positive market value")
+    weights = {key: value / total for key, value in values.items()}
+    concentration = sorted(
+        ({"asset_class": key, "weight": round(value, 8)} for key, value in weights.items()),
+        key=lambda item: item["weight"],
+        reverse=True,
+    )
+    returns = {
+        key: series
+        for key, series in ((_asset_class(p), p.get("returns")) for p in holdings)
+        if series
+    }
+    result = {
+        "portfolio_value": round(total, 2),
+        "asset_class_weights": concentration,
+        "largest_exposure": concentration[0] if concentration else None,
+        "concentration_flags": [
+            item["asset_class"] for item in concentration if item["weight"] >= 0.5
+        ],
+        "correlation_matrix": {},
+        "volatility_contribution": {},
+    }
+    if len(returns) >= 2:
+        frame = pd.DataFrame(returns).dropna()
+        result["correlation_matrix"] = frame.corr().round(8).to_dict()
+        covariance = frame.cov().to_numpy() * 252
+        weight_vector = np.array([weights.get(column, 0.0) for column in frame.columns])
+        portfolio_vol = float(np.sqrt(weight_vector @ covariance @ weight_vector))
+        if portfolio_vol:
+            contributions = weight_vector * (covariance @ weight_vector) / portfolio_vol
+            result["volatility_contribution"] = {
+                column: round(float(value), 8)
+                for column, value in zip(frame.columns, contributions)
+            }
+    return result

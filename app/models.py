@@ -39,3 +39,28 @@ class AllocationRequest(BaseModel):
         if any(value < 0 for value in self.target_allocation.values()):
             raise ValueError("target_allocation values cannot be negative")
         return self
+
+
+class OptimizationRequest(BaseModel):
+    historical_returns: dict[str, list[float]] = Field(
+        description="Asset ticker mapped to aligned periodic decimal returns."
+    )
+    objective: str = Field(
+        default="max_sharpe", description="Optimization objective: max_sharpe or min_volatility."
+    )
+    risk_free_rate: float = Field(
+        default=0.04, ge=0, lt=1, description="Annual risk-free rate as a decimal."
+    )
+
+    @model_validator(mode="after")
+    def validate_returns(self):
+        if len(self.historical_returns) < 2:
+            raise ValueError("At least two assets are required")
+        lengths = {len(values) for values in self.historical_returns.values()}
+        if len(lengths) != 1 or min(lengths) < 2:
+            raise ValueError(
+                "All assets need equally sized return series with at least two observations"
+            )
+        if self.objective not in {"max_sharpe", "min_volatility"}:
+            raise ValueError("objective must be max_sharpe or min_volatility")
+        return self

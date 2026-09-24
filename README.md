@@ -28,3 +28,12 @@ This service performs local calculations and does not require an API key. Option
 docker build -t quant-engine-mcp:local .
 docker run --rm -p 8000:8000 quant-engine-mcp:local
 ```
+
+## Optimization and risk analysis
+
+Additional V1 tools:
+
+- `optimize_target_allocation(request)` uses PyPortfolioOpt with Ledoit-Wolf covariance shrinkage. The request contains `historical_returns`, `objective` (`max_sharpe` or `min_volatility`), and `risk_free_rate`.
+- `analyze_portfolio_risk(current_holdings)` reports concentration flags, correlations, and volatility contribution.
+
+These tools produce analysis only and never execute trades.
