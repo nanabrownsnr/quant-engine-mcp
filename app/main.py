@@ -11,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.license import license_watcher
+from app.models import AllocationRequest, Holding
 from app.quant import calculate_drift, metrics, rebalance
 from app.twynity import register_routes
 from app.usage import save_usage_report
@@ -26,27 +27,32 @@ async def lifespan(server):
         with suppress(asyncio.CancelledError):
             await task
 
+
 mcp = FastMCP(settings.APP_TITLE, lifespan=lifespan)
 
 
 @mcp.tool
-def calculate_portfolio_drift(current_holdings: list[dict], target_allocation: dict[str, float]) -> dict:
+def calculate_portfolio_drift(request: AllocationRequest) -> dict:
     """Compare holdings with target weights. Example: calculate_portfolio_drift([{asset_class: Equity, market_value: 600}, {asset_class: Bond, market_value: 400}], {Equity: 0.6, Bond: 0.4}). Holdings need asset_class plus market_value, or quantity and current_price. Target weights are decimals summing to 1. Returns current percentage, target percentage, percentage drift, and dollar drift."""
-    return calculate_drift(current_holdings, target_allocation)
+    return calculate_drift(
+        [item.model_dump() for item in request.current_holdings], request.target_allocation
+    )
 
 
 @mcp.tool
-def run_rebalance_plan(current_holdings: list[dict], target_allocation: dict[str, float], max_tax_impact: bool = True) -> dict:
+def run_rebalance_plan(request: AllocationRequest, max_tax_impact: bool = True) -> dict:
     """Plan buys and sells without placing trades. Example: run_rebalance_plan([{asset_class: Equity, market_value: 800, account_type: Taxable, cost_basis: 600}, {asset_class: Bond, market_value: 200}], {Equity: 0.6, Bond: 0.4}). Set max_tax_impact=true to flag taxable sales with estimated gains."""
-    return rebalance(current_holdings, target_allocation, max_tax_impact)
+    return rebalance(
+        [item.model_dump() for item in request.current_holdings],
+        request.target_allocation,
+        max_tax_impact,
+    )
 
 
 @mcp.tool
-def compute_portfolio_metrics(current_holdings: list[dict]) -> dict:
+def compute_portfolio_metrics(current_holdings: list[Holding]) -> dict:
     """Compute annualized volatility, Sharpe ratio, and correlation. Add returns as decimal lists, e.g. returns: [0.01, -0.005, 0.02]. Example: compute_portfolio_metrics([{asset_class: Equity, market_value: 600, returns: [0.01, -0.005, 0.02]}]). Without returns, risk metrics are null rather than invented."""
-    return metrics(current_holdings)
-
-
+    return metrics([item.model_dump() for item in current_holdings])
 
 
 class UsageTrackingMiddleware(MCPMiddleware):
@@ -54,18 +60,23 @@ class UsageTrackingMiddleware(MCPMiddleware):
         await save_usage_report("TOOL_CALL", context.message.name, None)
         return await call_next(context)
 
+
 mcp.add_middleware(UsageTrackingMiddleware())
 register_routes(mcp)
-origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()] or ["*"]
+origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()] or [
+    "*"
+]
 
 app = mcp.http_app(
-    middleware=[Middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["mcp-session-id"],
-    )],
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["mcp-session-id"],
+        )
+    ],
     transport="streamable-http",
     stateless_http=True,
     json_response=True,
@@ -73,4 +84,5 @@ app = mcp.http_app(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

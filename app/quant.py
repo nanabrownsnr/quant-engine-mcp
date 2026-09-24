@@ -42,14 +42,16 @@ def calculate_drift(holdings: list[dict], target: dict[str, float]) -> dict:
         current_value = values[asset_class]
         target_pct = float(target.get(asset_class, 0.0))
         current_pct = current_value / total
-        rows.append({
-            "asset_class": asset_class,
-            "current_value": round(current_value, 2),
-            "current_percentage": round(current_pct, 8),
-            "target_percentage": round(target_pct, 8),
-            "drift_percentage": round(current_pct - target_pct, 8),
-            "drift_value": round(current_value - total * target_pct, 2),
-        })
+        rows.append(
+            {
+                "asset_class": asset_class,
+                "current_value": round(current_value, 2),
+                "current_percentage": round(current_pct, 8),
+                "target_percentage": round(target_pct, 8),
+                "drift_percentage": round(current_pct - target_pct, 8),
+                "drift_value": round(current_value - total * target_pct, 2),
+            }
+        )
     return {"portfolio_value": round(total, 2), "drift": rows}
 
 
@@ -63,21 +65,27 @@ def rebalance(holdings: list[dict], target: dict[str, float], max_tax_impact: bo
             continue
         direction = "buy" if amount > 0 else "sell"
         affected = [p for p in holdings if _asset_class(p) == row["asset_class"]]
-        taxable = any(str(p.get("account_type", "")).lower() in {"taxable", "brokerage"} for p in affected)
+        taxable = any(
+            str(p.get("account_type", "")).lower() in {"taxable", "brokerage"} for p in affected
+        )
         estimated_gain = 0.0
         if direction == "sell":
             for p in affected:
                 mv = _value(p)
                 basis = float(p.get("cost_basis", 0))
-                estimated_gain += max(0.0, mv - basis) * min(abs(amount) / max(sum(_value(x) for x in affected), 1), 1)
-        plans.append({
-            "asset_class": row["asset_class"],
-            "action": direction,
-            "dollar_amount": round(abs(amount), 2),
-            "taxable_account_affected": taxable,
-            "estimated_taxable_gain": round(estimated_gain, 2),
-            "tax_impact_flag": bool(max_tax_impact and taxable and estimated_gain > 0),
-        })
+                estimated_gain += max(0.0, mv - basis) * min(
+                    abs(amount) / max(sum(_value(x) for x in affected), 1), 1
+                )
+        plans.append(
+            {
+                "asset_class": row["asset_class"],
+                "action": direction,
+                "dollar_amount": round(abs(amount), 2),
+                "taxable_account_affected": taxable,
+                "estimated_taxable_gain": round(estimated_gain, 2),
+                "tax_impact_flag": bool(max_tax_impact and taxable and estimated_gain > 0),
+            }
+        )
     return {"portfolio_value": total, "target_allocation": target, "trades": plans}
 
 
@@ -91,7 +99,12 @@ def metrics(holdings: list[dict]) -> dict:
         series = position.get("returns")
         if series:
             returns_by_asset.setdefault(_asset_class(position), []).append(series)
-    result = {"portfolio_value": round(total, 2), "portfolio_volatility": None, "sharpe_ratio": None, "correlation_matrix": {}}
+    result = {
+        "portfolio_value": round(total, 2),
+        "portfolio_volatility": None,
+        "sharpe_ratio": None,
+        "correlation_matrix": {},
+    }
     if not returns_by_asset:
         return result
     asset_returns = {}
@@ -99,10 +112,14 @@ def metrics(holdings: list[dict]) -> dict:
         frame = pd.DataFrame(series_list).astype(float)
         asset_returns[asset_class] = frame.mean(axis=0)
     frame = pd.DataFrame(asset_returns).dropna()
-    weights = np.array([sum(_value(p) for p in holdings if _asset_class(p) == c) / total for c in frame.columns])
+    weights = np.array(
+        [sum(_value(p) for p in holdings if _asset_class(p) == c) / total for c in frame.columns]
+    )
     portfolio_returns = frame.to_numpy() @ weights
     volatility = float(np.std(portfolio_returns, ddof=1)) if len(portfolio_returns) > 1 else 0.0
     result["portfolio_volatility"] = round(volatility * sqrt(252), 8)
-    result["sharpe_ratio"] = round(float(np.mean(portfolio_returns) / volatility * sqrt(252)), 8) if volatility else None
+    result["sharpe_ratio"] = (
+        round(float(np.mean(portfolio_returns) / volatility * sqrt(252)), 8) if volatility else None
+    )
     result["correlation_matrix"] = frame.corr().round(8).to_dict()
     return result

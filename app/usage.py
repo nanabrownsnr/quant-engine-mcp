@@ -13,6 +13,7 @@ from app.config import settings
 
 logger = getLogger(__name__)
 
+
 async def save_usage_report(method: str, endpoint: str, auth_header: str | None) -> None:
     """Fire-and-forget usage report. Skips calls with no Authorization header."""
     if auth_header is None:

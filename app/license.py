@@ -24,11 +24,11 @@ LICENSE_ACTIVATION_URL = f"{LICENSE_SERVER_URL}/{ACTIVATION_ENDPOINT}"
 logger = getLogger(__name__)
 
 
-
 def get_device_id() -> str:
     """Return MAC address as a 12-character hex string (device fingerprint)."""
     mac = uuid.getnode()
     return f"{mac:012x}"
+
 
 async def get_jwks() -> list[dict]:
     async with httpx.AsyncClient() as client:
@@ -36,11 +36,13 @@ async def get_jwks() -> list[dict]:
         resp.raise_for_status()
         return resp.json()["keys"]
 
+
 def get_public_key(jwks: list[dict], kid: str) -> dict:
     for jwk in jwks:
         if jwk["kid"] == kid:
             return jwk
     raise Exception("Key not found")
+
 
 async def decode_license_token(token: str) -> dict:
     """Fetch JWKS and decode + verify the signed activation token."""
@@ -50,7 +52,10 @@ async def decode_license_token(token: str) -> dict:
     logger.info(f"Using key kid={header['kid']}")
     return jwt.decode(token, key, algorithms=[header["alg"]])
 
-async def get_license_activation_token(license_key: str, device_id: str, service_id: str) -> str | None:
+
+async def get_license_activation_token(
+    license_key: str, device_id: str, service_id: str
+) -> str | None:
     """Request a signed activation token from the License Server.
     Args:
     license_key: The license key for this deployment.
@@ -97,7 +102,6 @@ def shutdown():
     sys.exit(1)
 
 
-
 async def license_watcher(interval_seconds: float = 86400, max_failures: int = 14):
     """Background task: periodically validate the license.
     Runs forever. On each iteration:
@@ -110,7 +114,9 @@ async def license_watcher(interval_seconds: float = 86400, max_failures: int = 1
     failure_count = 0
     while True:
         try:
-            valid = await validate_license(settings.LICENSE_KEY, settings.SERVICE_ID, get_device_id())
+            valid = await validate_license(
+                settings.LICENSE_KEY, settings.SERVICE_ID, get_device_id()
+            )
             if valid:
                 failure_count = 0
                 logger.info("License check passed.")
